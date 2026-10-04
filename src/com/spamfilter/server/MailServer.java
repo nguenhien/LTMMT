@@ -10,6 +10,8 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 public class MailServer {
     private static final int PORT = 12345; // Cổng mặc định cho Mail Server
@@ -18,6 +20,9 @@ public class MailServer {
     private static final List<String> BLACKLIST_KEYWORDS = Arrays.asList(
         "casino", "trúng thưởng", "quảng cáo", "free money", "chuyển khoản gấp", "100% win"
     );
+    
+    // Danh sách lưu tất cả email đã nhận (dùng chung cho mọi Client)
+    private static final List<EmailMessage> emailStorage = new CopyOnWriteArrayList<>();
     
     // Danh sách địa chỉ IP bị chặn (Blocked IPs)
     private static final List<String> BLACKLIST_IPS = Arrays.asList(
@@ -56,54 +61,79 @@ public class MailServer {
                 ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
                 ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream())
             ) {
-                // Lấy thông tin IP của Client gửi đến
                 String clientIP = socket.getInetAddress().getHostAddress();
                 System.out.println("[SERVER] Nhận kết nối từ IP: " + clientIP);
 
-                // Nhận đối tượng Email do Client gửi lên
-                EmailMessage email = (EmailMessage) ois.readObject();
-                
-                // ---- THỰC HIỆN THUẬT TOÁN BỘ LỌC SPAM (SPAM FILTER) ----
-                boolean isSpam = false;
-                String spamReason = "";
+                // Đọc lệnh từ Client trước (String)
+                String command = (String) ois.readObject();
+                System.out.println("[SERVER] Lệnh nhận được: " + command);
 
-                // 1. Kiểm tra IP có nằm trong danh sách đen không
-                if (BLACKLIST_IPS.contains(clientIP)) {
-                    isSpam = true;
-                    spamReason = "Địa chỉ IP bị chặn (" + clientIP + ")";
-                } 
-                else {
-                    // 2. Kiểm tra tiêu đề hoặc nội dung có chứa từ khóa cấm không
-                    String contentToCheck = (email.getSubject() + " " + email.getBody()).toLowerCase();
-                    for (String keyword : BLACKLIST_KEYWORDS) {
-                        if (contentToCheck.contains(keyword.toLowerCase())) {
-                            isSpam = true;
-                            spamReason = "Phát hiện từ khóa cấm: '" + keyword + "'";
-                            break;
+                if ("SEND".equals(command)) {
+                    // Nhận email
+                    EmailMessage email = (EmailMessage) ois.readObject();
+
+                    // ---- THUẬT TOÁN BỘ LỌC SPAM ----
+                    boolean isSpam = false;
+                    String spamReason = "";
+
+                    if (BLACKLIST_IPS.contains(clientIP)) {
+                        isSpam = true;
+                        spamReason = "Địa chỉ IP bị chặn (" + clientIP + ")";
+                    } else {
+                        String contentToCheck = (email.getSubject() + " " + email.getBody()).toLowerCase();
+                        for (String keyword : BLACKLIST_KEYWORDS) {
+                            if (contentToCheck.contains(keyword.toLowerCase())) {
+                                isSpam = true;
+                                spamReason = "Phát hiện từ khóa cấm: '" + keyword + "'";
+                                break;
+                            }
                         }
                     }
-                }
 
-                // Cập nhật trạng thái email dựa trên kết quả lọc
-                if (isSpam) {
-                    email.setStatus("SPAM");
-                    System.out.println("[SPAM FILTER] Thư bị đưa vào mục SPAM! Lý do: " + spamReason);
+                    if (isSpam) {
+                        email.setStatus("SPAM");
+                        System.out.println("[SPAM FILTER] Thư bị đưa vào SPAM! Lý do: " + spamReason);
+                    } else {
+                        email.setStatus("INBOX");
+                        System.out.println("[SPAM FILTER] Thư hợp lệ → INBOX.");
+                    }
+
+                    // Lưu vào bộ nhớ + ghi log
+                    emailStorage.add(email);
+                    MailLogger.logEmail(email);
+
+                    // Trả kết quả về Client
+                    oos.writeObject(email);
+                    oos.flush();
+
+                } else if ("GET_INBOX".equals(command)) {
+                    List<EmailMessage> inbox = emailStorage.stream()
+                            .filter(e -> "INBOX".equals(e.getStatus()))
+                            .collect(Collectors.toList());
+                    oos.writeObject(inbox);
+                    oos.flush();
+                    System.out.println("[SERVER] Đã gửi " + inbox.size() + " thư INBOX");
+
+                } else if ("GET_SPAM".equals(command)) {
+                    List<EmailMessage> spam = emailStorage.stream()
+                            .filter(e -> "SPAM".equals(e.getStatus()))
+                            .collect(Collectors.toList());
+                    oos.writeObject(spam);
+                    oos.flush();
+                    System.out.println("[SERVER] Đã gửi " + spam.size() + " thư SPAM");
+
                 } else {
-                    email.setStatus("INBOX");
-                    System.out.println("[SPAM FILTER] Thư hợp lệ, đã lưu vào INBOX.");
+                    System.out.println("[SERVER] Lệnh không hợp lệ: " + command);
                 }
-
-                // Phản hồi kết quả xử lý lại cho Client
-                oos.writeObject(email);
-                oos.flush();
 
             } catch (Exception e) {
-                System.err.println("[SERVER ERROR] Lỗi xử lý luồng Client: " + e.getMessage());
+                System.err.println("[SERVER ERROR] Lỗi xử lý Client: " + e.getMessage());
+                e.printStackTrace();
             } finally {
                 try {
                     socket.close();
                 } catch (IOException e) {
-                    // Bỏ qua lỗi đóng socket
+                    // bỏ qua
                 }
             }
         }
