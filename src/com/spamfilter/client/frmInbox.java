@@ -9,7 +9,10 @@ package com.spamfilter.client;
  * @author Admin
  */
 public class frmInbox extends javax.swing.JFrame {
-
+    private String serverIP = "10.49.25.229";   // ← IP ZeroTier của máy chạy Server
+    // Lưu danh sách email thật để khi click còn lấy được body
+    private java.util.List<com.spamfilter.model.EmailMessage> inboxList = new java.util.ArrayList<>();
+    private java.util.List<com.spamfilter.model.EmailMessage> spamList = new java.util.ArrayList<>();
     /**
      * Creates new form frmInbox
      */
@@ -146,44 +149,85 @@ public class frmInbox extends javax.swing.JFrame {
 
     private void tblThuDenMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_tblThuDenMouseClicked
         // TODO add your handling code here:
-        int selectedRow = tblThuDen.getSelectedRow();
-        if (selectedRow != -1) {
-        // Giả sử cột 0: Người gửi, cột 1: Tiêu đề, cột 2: Thời gian, cột 3 (hoặc lấy từ model): Nội dung chi tiết
-        // Hoặc bạn có thể tùy chỉnh lấy dữ liệu từ TableModel tương ứng của mình
-        String nguoiGui = tblThuDen.getValueAt(selectedRow, 0).toString();
-        String tieuDe = tblThuDen.getValueAt(selectedRow, 1).toString();
-        String thoiGian = tblThuDen.getValueAt(selectedRow, 2).toString();
+    int row = tblThuDen.getSelectedRow();
+        if (row != -1 && row < inboxList.size()) {
+            com.spamfilter.model.EmailMessage email = inboxList.get(row);
 
-        // Hiển thị lên txtNoiDung (bạn có thể thay đổi cách lấy nội dung tùy theo cấu trúc lưu trữ)
-        txtNoiDung.setText("--- THÔNG TIN THƯ ĐẾN ---\n" +
-                           "Người gửi: " + nguoiGui + "\n" +
-                           "Tiêu đề: " + tieuDe + "\n" +
-                           "Thời gian: " + thoiGian + "\n\n" +
-                           "Nội dung:\n(Đang tải nội dung chi tiết...)");
+            txtNoiDung.setText(
+                "--- THÔNG TIN THƯ ĐẾN ---\n"
+                + "Người gửi : " + email.getSenderEmail() + "\n"
+                + "Tiêu đề   : " + email.getSubject() + "\n"
+                + "IP gửi    : " + email.getSenderIP() + "\n\n"
+                + "Nội dung:\n" + email.getBody()
+            );
         }
     }//GEN-LAST:event_tblThuDenMouseClicked
 
     private void tblSpamMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_tblSpamMouseClicked
         // TODO add your handling code here:
-        int selectedRow = tblSpam.getSelectedRow();
-        if (selectedRow != -1) {
-            String nguoiGui = tblSpam.getValueAt(selectedRow, 0).toString();
-            String tieuDe = tblSpam.getValueAt(selectedRow, 1).toString();
-            String thoiGian = tblSpam.getValueAt(selectedRow, 2).toString();
+    int row = tblSpam.getSelectedRow();
+        if (row != -1 && row < spamList.size()) {
+            com.spamfilter.model.EmailMessage email = spamList.get(row);
 
-            txtNoiDung.setText("--- THƯ RÁC (SPAM) --- \n" +
-                               "Người gửi: " + nguoiGui + "\n" +
-                               "Tiêu đề: " + tieuDe + "\n" +
-                               "Thời gian: " + thoiGian + "\n\n" +
-                               "Cảnh báo: Email này đã bị hệ thống đánh dấu là Spam!");
+            txtNoiDung.setText(
+                "--- THƯ RÁC (SPAM) ---\n"
+                + "Người gửi : " + email.getSenderEmail() + "\n"
+                + "Tiêu đề   : " + email.getSubject() + "\n"
+                + "IP gửi    : " + email.getSenderIP() + "\n\n"
+                + "Nội dung:\n" + email.getBody() + "\n\n"
+                + " Email này đã bị hệ thống đánh dấu là Spam!"
+            );
         }
     }//GEN-LAST:event_tblSpamMouseClicked
 
     private void btnLamMoiActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnLamMoiActionPerformed
         // TODO add your handling code here:
         txtNoiDung.setText("");
+
+            javax.swing.table.DefaultTableModel modelInbox = (javax.swing.table.DefaultTableModel) tblThuDen.getModel();
+            javax.swing.table.DefaultTableModel modelSpam  = (javax.swing.table.DefaultTableModel) tblSpam.getModel();
+            modelInbox.setRowCount(0);
+            modelSpam.setRowCount(0);
+
+            // Xóa list cũ
+            inboxList.clear();
+            spamList.clear();
+
+            // Tải dữ liệu
+            loadEmails("GET_INBOX", modelInbox, inboxList);
+            loadEmails("GET_SPAM",  modelSpam,  spamList);
     }//GEN-LAST:event_btnLamMoiActionPerformed
 
+    private void loadEmails(String command,
+                            javax.swing.table.DefaultTableModel model,
+                            java.util.List<com.spamfilter.model.EmailMessage> targetList) {
+        try (java.net.Socket socket = new java.net.Socket(serverIP, 12345);
+             java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(socket.getOutputStream());
+             java.io.ObjectInputStream ois = new java.io.ObjectInputStream(socket.getInputStream())) {
+
+            oos.writeObject(command);
+            oos.flush();
+
+            @SuppressWarnings("unchecked")
+            java.util.List<com.spamfilter.model.EmailMessage> list =
+                    (java.util.List<com.spamfilter.model.EmailMessage>) ois.readObject();
+
+            for (com.spamfilter.model.EmailMessage email : list) {
+                targetList.add(email);          // lưu object thật
+                model.addRow(new Object[]{
+                    email.getSenderEmail(),
+                    email.getSubject(),
+                    java.time.LocalDateTime.now().toString().substring(0, 19)
+                });
+            }
+
+        } catch (Exception ex) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Không thể kết nối Server (" + command + "):\n" + ex.getMessage(),
+                    "Lỗi kết nối", javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    
     private void btnXoaActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnXoaActionPerformed
         // TODO add your handling code here:
         int rowThuDen = tblThuDen.getSelectedRow();
