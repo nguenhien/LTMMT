@@ -133,42 +133,69 @@ public class frmMain extends javax.swing.JFrame {
 
     private void btnGuiMailActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuiMailActionPerformed
         // TODO add your handling code here:
-        // 1. Lay du lieu tu cac o giao dien
+        // 1. Lấy dữ liệu từ giao diện
         String serverIp = txtServerIP.getText().trim();
         String senderEmail = txtEmailGui.getText().trim();
         String recipient = txtEmailNhan.getText().trim();
         String subject = txtTieuDe.getText().trim();
         String body = txtNoiDung.getText().trim();
 
-        // 2. Kiem tra xem co o nao bi bo trong khong
-        if (serverIp.isEmpty() || senderEmail.isEmpty() || recipient.isEmpty() || subject.isEmpty() || body.isEmpty()) {
-        javax.swing.JOptionPane.showMessageDialog(this, "Vui lòng điền tất cả các thông tin!", "Cảnh báo", javax.swing.JOptionPane.WARNING_MESSAGE);
-        return;
+        // 2. Kiểm tra bỏ trống
+        if (serverIp.isEmpty() || senderEmail.isEmpty() || recipient.isEmpty()
+                || subject.isEmpty() || body.isEmpty()) {
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Vui lòng điền tất cả các thông tin!",
+                    "Cảnh báo", javax.swing.JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
-        // 3. Ket noi Socket va gui doi tuong EmailMessage len Server
+        // 3. Kết nối Server và gửi theo protocol mới
         try (java.net.Socket socket = new java.net.Socket(serverIp, 12345);
-             java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(socket.getOutputStream())) {
+             java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(socket.getOutputStream());
+             java.io.ObjectInputStream ois = new java.io.ObjectInputStream(socket.getInputStream())) {
 
-            // Lay IP cua may Client tu dong qua Socket
+            // Lấy IP của máy Client
             String senderIp = socket.getLocalAddress().getHostAddress();
 
-            // Khoi tao doi tuong EmailMessage theo dung model chuan cua nhom
-            com.spamfilter.model.EmailMessage email = new com.spamfilter.model.EmailMessage(senderIp, senderEmail, recipient, subject, body);
+            // Tạo đối tượng email
+            com.spamfilter.model.EmailMessage email =
+                    new com.spamfilter.model.EmailMessage(senderIp, senderEmail, recipient, subject, body);
 
-            // Gui goi tin qua Socket
+            // ---- PROTOCOL MỚI ----
+            // Bước 1: Gửi lệnh "SEND"
+            oos.writeObject("SEND");
+            oos.flush();
+
+            // Bước 2: Gửi object EmailMessage
             oos.writeObject(email);
             oos.flush();
 
-            javax.swing.JOptionPane.showMessageDialog(this, "Gui email thanh cong toi Server!", "Thong bao", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            // Bước 3: Đọc phản hồi từ Server
+            com.spamfilter.model.EmailMessage result =
+                    (com.spamfilter.model.EmailMessage) ois.readObject();
 
-            // Xoa trang noi dung cu sau khi gui xong (giu lai IP va Email gui)
+            // 4. Hiển thị kết quả cho người dùng
+            if ("SPAM".equals(result.getStatus())) {
+                javax.swing.JOptionPane.showMessageDialog(this,
+                        "Email đã được gửi nhưng bị đưa vào SPAM!\n"
+                        + "Tiêu đề: " + result.getSubject(),
+                        "Cảnh báo Spam", javax.swing.JOptionPane.WARNING_MESSAGE);
+            } else {
+                javax.swing.JOptionPane.showMessageDialog(this,
+                        "Gửi email thành công!\nThư đã vào Hộp thư đến (INBOX).",
+                        "Thành công", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            }
+
+            // 5. Xóa trắng form (giữ lại IP Server và Email người gửi)
             txtEmailNhan.setText("");
             txtTieuDe.setText("");
             txtNoiDung.setText("");
 
         } catch (Exception ex) {
-            javax.swing.JOptionPane.showMessageDialog(this, "Khong the ket noi toi Server: " + ex.getMessage(), "Loi ket noi", javax.swing.JOptionPane.ERROR_MESSAGE);
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Không thể kết nối tới Server:\n" + ex.getMessage(),
+                    "Lỗi kết nối", javax.swing.JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
         }
     }//GEN-LAST:event_btnGuiMailActionPerformed
 
