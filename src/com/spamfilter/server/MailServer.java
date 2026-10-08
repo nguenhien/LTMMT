@@ -30,12 +30,12 @@ public class MailServer {
     );
 
     public static void main(String[] args) {
-        System.out.println("[SERVER] Đang khởi động Mail Server tại cổng " + PORT + "...");
+        System.out.println("[SERVER] Dang khoi dong Mail Server tai cong " + PORT + "...");
         // Sử dụng Pool đa luồng để xử lý nhiều kết nối Client đồng thời
         ExecutorService pool = Executors.newFixedThreadPool(10);
         
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("[SERVER] Mail Server đã sẵn sàng lắng nghe kết nối từ Client.");
+            System.out.println("[SERVER] Mail Server da san sang lang nghe ket noi tu Client.");
             
             while (true) {
                 Socket clientSocket = serverSocket.accept();
@@ -43,7 +43,7 @@ public class MailServer {
                 pool.execute(new ClientHandler(clientSocket));
             }
         } catch (IOException e) {
-            System.err.println("[SERVER ERROR] Lỗi Server Socket: " + e.getMessage());
+            System.err.println("[SERVER ERROR] Loi Server Socket: " + e.getMessage());
         }
     }
 
@@ -62,11 +62,11 @@ public class MailServer {
                 ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream())
             ) {
                 String clientIP = socket.getInetAddress().getHostAddress();
-                System.out.println("[SERVER] Nhận kết nối từ IP: " + clientIP);
+                System.out.println("[SERVER] Nhan ket noi tu IP: " + clientIP);
 
                 // Đọc lệnh từ Client trước (String)
                 String command = (String) ois.readObject();
-                System.out.println("[SERVER] Lệnh nhận được: " + command);
+                System.out.println("[SERVER] Lenh nhan duoc: " + command);
 
                 if ("SEND".equals(command)) {
                     // Nhận email
@@ -78,13 +78,13 @@ public class MailServer {
 
                     if (BLACKLIST_IPS.contains(clientIP)) {
                         isSpam = true;
-                        spamReason = "Địa chỉ IP bị chặn (" + clientIP + ")";
+                        spamReason = "Dia chi IP bi chan (" + clientIP + ")";
                     } else {
                         String contentToCheck = (email.getSubject() + " " + email.getBody()).toLowerCase();
                         for (String keyword : BLACKLIST_KEYWORDS) {
                             if (contentToCheck.contains(keyword.toLowerCase())) {
                                 isSpam = true;
-                                spamReason = "Phát hiện từ khóa cấm: '" + keyword + "'";
+                                spamReason = "Phat hien tu khoa cam: '" + keyword + "'";
                                 break;
                             }
                         }
@@ -92,10 +92,10 @@ public class MailServer {
 
                     if (isSpam) {
                         email.setStatus("SPAM");
-                        System.out.println("[SPAM FILTER] Thư bị đưa vào SPAM! Lý do: " + spamReason);
+                        System.out.println("[SPAM FILTER] Thu bi dua vao SPAM! Ly do: " + spamReason);
                     } else {
                         email.setStatus("INBOX");
-                        System.out.println("[SPAM FILTER] Thư hợp lệ → INBOX.");
+                        System.out.println("[SPAM FILTER] Thu hop le → INBOX.");
                     }
 
                     // Lưu vào bộ nhớ + ghi log
@@ -112,7 +112,7 @@ public class MailServer {
                             .collect(Collectors.toList());
                     oos.writeObject(inbox);
                     oos.flush();
-                    System.out.println("[SERVER] Đã gửi " + inbox.size() + " thư INBOX");
+                    System.out.println("[SERVER] Da gui " + inbox.size() + " thư INBOX");
 
                 } else if ("GET_SPAM".equals(command)) {
                     List<EmailMessage> spam = emailStorage.stream()
@@ -120,14 +120,14 @@ public class MailServer {
                             .collect(Collectors.toList());
                     oos.writeObject(spam);
                     oos.flush();
-                    System.out.println("[SERVER] Đã gửi " + spam.size() + " thư SPAM");
+                    System.out.println("[SERVER] Da gui " + spam.size() + " thư SPAM");
 
                 } else {
-                    System.out.println("[SERVER] Lệnh không hợp lệ: " + command);
+                    System.out.println("[SERVER] Lenh khong hop le: " + command);
                 }
 
             } catch (Exception e) {
-                System.err.println("[SERVER ERROR] Lỗi xử lý Client: " + e.getMessage());
+                System.err.println("[SERVER ERROR] Loi xu ly Client: " + e.getMessage());
                 e.printStackTrace();
             } finally {
                 try {
